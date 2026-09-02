@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+interface:
+  display_name: "Qwen3.8 Local Coding"
+  short_description: "Deploy Qwen3.8 for local coding agents"
+  brand_color: "#16A34A"
+  default_prompt: "Use $qwen38-local-coding to deploy and benchmark Qwen3.8 for a coding agent."
+
+policy:
+  allow_implicit_invocation: true

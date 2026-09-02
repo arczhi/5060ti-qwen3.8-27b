@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Anthropic to llama.cpp OpenAI compatibility proxy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Environment=LISTEN_HOST=0.0.0.0
+Environment=LISTEN_PORT=8025
+Environment=UPSTREAM_URL=http://127.0.0.1:8024/v1/chat/completions
+Environment=UPSTREAM_MODEL=qwen3.8-27b-ud-iq4-xs-mtp1
+# Create this private file with PROXY_TOKEN=<long-random-value>.
+EnvironmentFile=-/etc/qwen38/proxy.env
+Environment=REQUEST_TIMEOUT=1800
+ExecStart=/opt/qwen38/venv/bin/python /opt/qwen38/anthropic_openai_proxy.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
