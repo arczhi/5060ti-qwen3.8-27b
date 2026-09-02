@@ -16,6 +16,19 @@ The useful question is not “how many tokens per second?” It is whether an ag
 
 This package is based on open-source work and hands-on local testing. The reference machine was an RTX 5060 Ti with 16GB VRAM and 32GB system RAM.
 
+## Reproducible hardware profile
+
+| Component | Detected configuration |
+| --- | --- |
+| CPU | AMD Ryzen 9 9950X, 16 cores / 32 threads, x86_64, 1 socket |
+| System memory | 32GB total, 2 x 16GB DDR5, 6000 MT/s configured speed |
+| GPU | NVIDIA GeForce RTX 5060 Ti, 16311 MiB VRAM, compute capability 12.0 |
+| NVIDIA software | Driver 595.71.05, CUDA 13.2 |
+| GPU power limit | 180W |
+| Inference host | Linux x86_64, Docker, llama.cpp CUDA server |
+
+The GPU status snapshot taken while the model was serving showed about 51% utilization and 15767 MiB of VRAM in use. Utilization and free VRAM are workload-dependent; they are included only to make the measurement context clear.
+
 ## Quick start
 
 1. Download the exact main and draft GGUF files from the model page. Do not convert them in the setup step.
@@ -87,6 +100,19 @@ Licensed under Apache-2.0.
 真正重要的不是单独看 tok/s，而是 agent 能否读懂真实代码仓库、遵循设计文档、完成修改并通过测试，同时少走弯路、不频繁压缩上下文。
 
 本项目结合开源社区成果和实际部署经验。参考设备为 RTX 5060 Ti 16GB 显存、32GB 系统内存。
+
+## 可复现设备配置
+
+| 部件 | 实际检测配置 |
+| --- | --- |
+| CPU | AMD Ryzen 9 9950X，16 核 / 32 线程，x86_64，单路 |
+| 系统内存 | 总计 32GB，2 x 16GB DDR5，配置运行频率 6000 MT/s |
+| GPU | NVIDIA GeForce RTX 5060 Ti，显存 16311 MiB，计算能力 12.0 |
+| NVIDIA 软件 | 驱动 595.71.05，CUDA 13.2 |
+| GPU 功耗上限 | 180W |
+| 推理环境 | Linux x86_64、Docker、llama.cpp CUDA server |
+
+模型运行期间采集到的 GPU 快照约为 51% 利用率，已使用 15767 MiB 显存。利用率和剩余显存会随任务变化，这里只用于说明测试时的运行环境。
 
 ## 快速开始
 
