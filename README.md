@@ -72,7 +72,7 @@ We repeated the same Pi session, repository, design document, skill, and impleme
 
 The request counts and averages include tool calls and retries, so they are not a synthetic single-prompt benchmark. Within this real agent run, FFN4 was the best balance: it improved the observed decode and prefill behavior over the historical no-offload run without the FFN8 run's lower decode and test-loop instability. The practical lesson is that CPU resources matter too: assigning a small part of the FFN work to CPU can release GPU pressure and improve long-context stability and speed, but more CPU offload is not automatically better.
 
-This experiment was prompted by Reddit user **Square_Turn935**. Thank you for the concrete suggestion to offload some FFN layers to CPU instead of slowing the MTP drafter: [original discussion](https://www.reddit.com/r/LocalLLM/comments/1w509o9/comment/p7c2sim/).
+This experiment was prompted by Reddit user **Square_Turn935**. Thank you for the concrete suggestion to offload some FFN layers to CPU instead of slowing the MTP drafter: [original discussion](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
 
 ## Limits
 
@@ -155,7 +155,7 @@ Claude Code 要指向不带 `/v1` 的适配器根地址，令牌放在私有环�
 
 这里的请求数和平均值包含工具调用与重试，不是单次 prompt 的实验室跑分。就本次真实 coding-agent 任务看，FFN4 是更好的平衡：相比历史无 offload 基线，prefill 和 decode 观测值更好，也没有 FFN8 的较低 decode 和测试循环问题。实际经验是：大模型推理时 CPU 同样重要，让 CPU 承担少量 FFN 计算可以释放 GPU 压力，改善长上下文稳定性和速度，但不是 offload 越多越快。
 
-这次实验受到 Reddit 网友 **Square_Turn935** 的建议启发。感谢他提出“把部分 FFN 层 offload 到 CPU，不要让 MTP drafter 变慢”的具体建议：[原讨论](https://www.reddit.com/r/LocalLLM/comments/1w509o9/comment/p7c2sim/)。
+这次实验受到 Reddit 网友 **Square_Turn935** 的建议启发。感谢他提出“把部分 FFN 层 offload 到 CPU，不要让 MTP drafter 变慢”的具体建议：[原讨论](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button)。
 
 ## 使用边界
 
