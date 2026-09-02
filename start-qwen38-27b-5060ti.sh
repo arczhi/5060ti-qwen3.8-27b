@@ -13,7 +13,13 @@ DRAFT_FILE="${DRAFT_FILE:-mtp-Qwen3.8-27B-Q4_0.gguf}"
 MODEL="${MODEL_DIR}/${MODEL_FILE}"
 DRAFT="${MODEL_DIR}/${DRAFT_FILE}"
 MODEL_ALIAS="${MODEL_ALIAS:-qwen3.8-27b-ud-iq4-xs-mtp1}"
-CONTEXT="${CONTEXT:-98304}"
+CONTEXT="${CONTEXT:-81920}"
+N_CPU_FFN="${N_CPU_FFN:-4}"
+
+CPU_FFN_ARGS=()
+if [[ -n "$N_CPU_FFN" && "$N_CPU_FFN" != "0" ]]; then
+  CPU_FFN_ARGS=(--n-cpu-ffn "$N_CPU_FFN")
+fi
 
 if [[ ! -f "$MODEL" || ! -f "$DRAFT" ]]; then
   echo "Missing model or MTP draft under ${MODEL_DIR}" >&2
@@ -35,6 +41,7 @@ fi
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
 # Keep the 1.68 GiB MTP draft on CPU; full GPU placement exceeds 16 GiB VRAM.
+# Offload a small number of dense FFN layers to CPU to reduce VRAM pressure.
 exec docker run --rm --name "$CONTAINER" --gpus all \
   --pull=never \
   -p "${HOST_PORT}:8080" \
@@ -47,7 +54,9 @@ exec docker run --rm --name "$CONTAINER" --gpus all \
   --port 8080 \
   --ctx-size "$CONTEXT" \
   --parallel 1 \
-  --fit on \
+  --fit off \
+  --n-gpu-layers all \
+  "${CPU_FFN_ARGS[@]}" \
   --n-gpu-layers-draft 0 \
   --flash-attn on \
   --cache-type-k q4_0 \
