@@ -35,7 +35,7 @@ The tested default uses one request slot, `q4_0` KV cache, one CPU-resident MTP 
 
 - Pi or Codex: `http://<model-host>:8024/v1`
 - Claude Code: run the optional adapter on `http://<model-host>:8025`
-- Model ID: `qwen3.8-27b-ud-iq4-xs-mtp1`
+- Model ID: `qwen3.8-27b-ud-iq4-xs-mtp1` ([Hugging Face model page](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF))
 
 Claude Code must use the adapter root without `/v1`. Keep its token in a private environment file. See [client-config.md](references/client-config.md).
 
@@ -105,7 +105,7 @@ bash start-qwen38-27b-5060ti.sh
 
 - Pi 或 Codex：`http://<模型主机>:8024/v1`
 - Claude Code：额外启动适配器，使用 `http://<模型主机>:8025`
-- 模型名：`qwen3.8-27b-ud-iq4-xs-mtp1`
+- 模型名：`qwen3.8-27b-ud-iq4-xs-mtp1`（[Hugging Face 模型页](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF)）
 
 Claude Code 要指向不带 `/v1` 的适配器根地址，令牌放在私有环境文件里。详见 [client-config.md](references/client-config.md)。
 

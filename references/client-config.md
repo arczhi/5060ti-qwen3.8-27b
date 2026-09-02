@@ -11,6 +11,7 @@ Use the llama.cpp endpoint directly:
 ```text
 Base URL: http://<model-host>:8024/v1
 Model: qwen3.8-27b-ud-iq4-xs-mtp1
+Model page: https://huggingface.co/unsloth/Qwen3.8-27B-GGUF
 Context: 81920 on the server by default; choose a smaller client window if compaction is needed
 Temperature: 0.2-0.7 for coding, depending on the agent
 ```

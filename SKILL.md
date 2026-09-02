@@ -15,6 +15,7 @@ Use this skill to deploy a quantized Qwen3.8 27B coding model on a small NVIDIA 
 - System RAM: 32 GB
 - Runtime: `llama.cpp` CUDA server in Docker
 - Model: `Qwen3.8-27B-UD-IQ4_XS.gguf`
+- Model page: <https://huggingface.co/unsloth/Qwen3.8-27B-GGUF>
 - Draft: `mtp-Qwen3.8-27B-Q4_0.gguf`
 - Context: start at `81920` tokens; test lower before attempting 96K or 128K
 - Parallelism: `1`
