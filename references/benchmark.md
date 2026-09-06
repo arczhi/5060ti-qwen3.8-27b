@@ -50,6 +50,22 @@ The counts include agent tool calls and retries, so B/C are not synthetic single
 
 This experiment was prompted by Reddit user **Square_Turn935**: [original discussion](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/).
 
+## Long-context parameter follow-up
+
+On 2026-09-06, the Pi agent connected from the local computer to the remote RTX 5060 Ti host through the OpenAI-compatible llama.cpp endpoint. The coding task remained the same AI Front Paste custom-prompt implementation. The fresh Pi run generated changes in the expected four Go files plus the table schema, but Pi did not return a final report after its last model request. Independent `go test ./internal/logic/ai_front_paste` was blocked during startup because the local Nacos test cache was absent, so this run is a code-generation and runtime signal, not a completed task-success result. The server reached about 58K context, reused a 0.94-0.999 similar prefix across turns, and reported MTP acceptance from about 82%-99.5%.
+
+The following controlled probes used the same code-shaped prompt generator, 96 output tokens, temperature 0, one slot, FFN4, Flash Attention, and a cold container for each configuration. The token count is the server's actual token count, not the requested character target.
+
+| Configuration | Cold probe | Warm follow-up | Result |
+| --- | --- | --- | --- |
+| `batch=2048`, `ubatch=512`, Q4_0 K/V, MTP-1, 80K | 57,096 prompt tokens; 696.27 prefill tok/s; 17.69 decode tok/s | 519 new / 56,580 cached; 6.86s | Best balanced baseline |
+| `batch=2048`, `ubatch=256`, Q4_0 K/V, MTP-1, 80K | 57,096 prompt tokens; 657.29 prefill tok/s; 16.91 decode tok/s | 263 new / 56,836 cached; 6.83s | Slower; no benefit observed |
+| `batch=4096`, `ubatch=1024`, Q4_0 K/V, MTP-1, 80K | Failed during startup | CUDA buffer allocation failed at about 628 MiB | Not usable on this 16GB profile |
+| `batch=2048`, `ubatch=512`, Q8_0 K/Q4_0 V, MTP-1, 64K | About 10,240 tokens reached 93 tok/s prefill before the probe was stopped | Not measured | Long prefill was far too slow on this build |
+| `batch=2048`, `ubatch=512`, Q4_0 K/V, n-gram-mod only, 80K | 14,302 prompt tokens; 887.31 prefill tok/s; 22.08 decode tok/s | 519 new / 13,786 cached; 5.22s | Faster prefill but slower decode than MTP; no general win |
+
+The selected script baseline is therefore `CONTEXT=81920`, `BATCH_SIZE=2048`, `UBATCH_SIZE=512`, `N_CPU_FFN=4`, `CACHE_TYPE_K=q4_0`, `CACHE_TYPE_V=q4_0`, `SPEC_TYPE=draft-mtp`, and `SPEC_DRAFT_N_MAX=1`. Batch parameters, KV types, and speculation mode are exposed as environment variables so future comparisons can reproduce the same command. N-gram-only remains an explicit comparison mode rather than the default because the real coding workload benefits from the MTP draft's higher decode rate.
+
 ## Earlier local baseline context
 
 These older oMLX runs used different models, prompts, and workloads, so they are directional only:

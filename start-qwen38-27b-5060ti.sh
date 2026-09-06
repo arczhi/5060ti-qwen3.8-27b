@@ -15,14 +15,32 @@ DRAFT="${MODEL_DIR}/${DRAFT_FILE}"
 MODEL_ALIAS="${MODEL_ALIAS:-qwen3.8-27b-ud-iq4-xs-mtp1}"
 CONTEXT="${CONTEXT:-81920}"
 N_CPU_FFN="${N_CPU_FFN:-4}"
+BATCH_SIZE="${BATCH_SIZE:-2048}"
+UBATCH_SIZE="${UBATCH_SIZE:-512}"
+CACHE_TYPE_K="${CACHE_TYPE_K:-q4_0}"
+CACHE_TYPE_V="${CACHE_TYPE_V:-q4_0}"
+SPEC_TYPE="${SPEC_TYPE:-draft-mtp}"
+SPEC_DRAFT_N_MAX="${SPEC_DRAFT_N_MAX:-1}"
+SPEC_NGRAM_N_MATCH="${SPEC_NGRAM_N_MATCH:-24}"
+SPEC_NGRAM_N_MIN="${SPEC_NGRAM_N_MIN:-48}"
+SPEC_NGRAM_N_MAX="${SPEC_NGRAM_N_MAX:-64}"
 
 CPU_FFN_ARGS=()
 if [[ -n "$N_CPU_FFN" && "$N_CPU_FFN" != "0" ]]; then
   CPU_FFN_ARGS=(--n-cpu-ffn "$N_CPU_FFN")
 fi
 
-if [[ ! -f "$MODEL" || ! -f "$DRAFT" ]]; then
-  echo "Missing model or MTP draft under ${MODEL_DIR}" >&2
+MODEL_ARGS=(-m "/models/${MODEL_FILE}")
+if [[ "$SPEC_TYPE" == *draft-mtp* ]]; then
+  if [[ ! -f "$DRAFT" ]]; then
+    echo "Missing MTP draft under ${MODEL_DIR}" >&2
+    exit 1
+  fi
+  MODEL_ARGS+=(-md "/models/${DRAFT_FILE}")
+fi
+
+if [[ ! -f "$MODEL" ]]; then
+  echo "Missing main model under ${MODEL_DIR}" >&2
   exit 1
 fi
 
@@ -42,27 +60,36 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
 # Keep the 1.68 GiB MTP draft on CPU; full GPU placement exceeds 16 GiB VRAM.
 # Offload a small number of dense FFN layers to CPU to reduce VRAM pressure.
+SPEC_ARGS=(--spec-type "$SPEC_TYPE" --spec-draft-n-max "$SPEC_DRAFT_N_MAX")
+if [[ "$SPEC_TYPE" == *ngram-mod* ]]; then
+  SPEC_ARGS+=(
+    --spec-ngram-mod-n-match "$SPEC_NGRAM_N_MATCH"
+    --spec-ngram-mod-n-min "$SPEC_NGRAM_N_MIN"
+    --spec-ngram-mod-n-max "$SPEC_NGRAM_N_MAX"
+  )
+fi
+
 exec docker run --rm --name "$CONTAINER" --gpus all \
   --pull=never \
   -p "${HOST_PORT}:8080" \
   -v "${MODEL_DIR}:/models:ro" \
   "$IMAGE" \
-  -m "/models/${MODEL_FILE}" \
-  -md "/models/${DRAFT_FILE}" \
+  "${MODEL_ARGS[@]}" \
   --alias "$MODEL_ALIAS" \
   --host 0.0.0.0 \
   --port 8080 \
   --ctx-size "$CONTEXT" \
+  --batch-size "$BATCH_SIZE" \
+  --ubatch-size "$UBATCH_SIZE" \
   --parallel 1 \
   --fit off \
   --n-gpu-layers all \
   "${CPU_FFN_ARGS[@]}" \
   --n-gpu-layers-draft 0 \
   --flash-attn on \
-  --cache-type-k q4_0 \
-  --cache-type-v q4_0 \
-  --spec-type draft-mtp \
-  --spec-draft-n-max 1 \
+  --cache-type-k "$CACHE_TYPE_K" \
+  --cache-type-v "$CACHE_TYPE_V" \
+  "${SPEC_ARGS[@]}" \
   --reasoning off \
   --jinja \
   --metrics

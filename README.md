@@ -42,7 +42,7 @@ export HOST_PORT=8024
 bash start-qwen38-27b-5060ti.sh
 ```
 
-The tested default uses one request slot, `q4_0` KV cache, one CPU-resident MTP draft, Flash Attention, reasoning disabled, and `--n-cpu-ffn 4`. A CUDA image mirror can be supplied with `LLAMA_IMAGE` when the default registry is unavailable. Use `N_CPU_FFN=0` for the no-offload comparison or `N_CPU_FFN=8` for the larger-offload comparison.
+The tested default uses one request slot, `batch=2048`, `ubatch=512`, `q4_0` KV cache, one CPU-resident MTP draft, Flash Attention, reasoning disabled, and `--n-cpu-ffn 4`. These batch, KV, and speculation settings can be overridden with environment variables for controlled comparisons. A CUDA image mirror can be supplied with `LLAMA_IMAGE` when the default registry is unavailable. Use `N_CPU_FFN=0` for the no-offload comparison or `N_CPU_FFN=8` for the larger-offload comparison.
 
 ## Connect an agent
 
@@ -125,7 +125,7 @@ export HOST_PORT=8024
 bash start-qwen38-27b-5060ti.sh
 ```
 
-脚本默认单并发、`q4_0` KV cache、一个放在 CPU 的 MTP draft、Flash Attention、关闭 reasoning，并启用 `--n-cpu-ffn 4`。镜像仓库不可用时，可通过 `LLAMA_IMAGE` 指定镜像站。设置 `N_CPU_FFN=0` 可跑无 offload 对照，设置 `N_CPU_FFN=8` 可跑较大 offload 对照。
+脚本默认单并发、`batch=2048`、`ubatch=512`、`q4_0` KV cache、一个放在 CPU 的 MTP draft、Flash Attention、关闭 reasoning，并启用 `--n-cpu-ffn 4`。batch、KV 和 speculation 参数都可以通过环境变量覆盖，用于复现实验对照。镜像仓库不可用时，可通过 `LLAMA_IMAGE` 指定镜像站。设置 `N_CPU_FFN=0` 可跑无 offload 对照，设置 `N_CPU_FFN=8` 可跑较大 offload 对照。
 
 ## 接入 agent
 
