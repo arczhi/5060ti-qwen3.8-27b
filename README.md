@@ -14,9 +14,31 @@ The useful question is not "how many tok/s?" but whether an agent can inspect a 
 
 ## Experiment timeline (newest first)
 
-### 2026-09-11 · Adaptive KV Streaming @ 192K (latest)
+<details open>
+<summary><b>2026-09-17 · KVMem 256K (latest)</b> — prefill 675-1,399 tok/s · decode 56.8 tok/s @ 261K, 38.8-65.8 over agent turns · 256K workspace on 16GB · agent E2E 100/100</summary>
 
-Replicated the community "Adaptive KV Streaming" scheme ([Reddit](https://www.reddit.com/r/LocalLLM/comments/1was9n0/), [fork repo](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)): the fork streams the KV cache between VRAM and system RAM, so **196,608-token context loads and generates correctly on a 16GB card** (Q8_0 K + Q4_0 V, `--kv-stream-stage-mib 1408`, no MTP).
+Replicated the [KVMem scheme](https://github.com/ggml-org/llama.cpp/discussions/28894) ([repo](https://github.com/kvmem/kvmem-llama.cpp) v0.16.0-rc1): finished history lives in host RAM and a bounded 32K GPU window is retrieved per question — **a full 262,144-token workspace runs on the 16GB card**, with correct recall of a needle at the top of the context.
+
+> **In plain terms:** think of KVMem as "RAG for the KV cache". Normally a 256K conversation must keep its entire KV cache resident in VRAM — which is why this model caps out around 80K on a 16GB card. KVMem instead treats finished history as a searchable store: conversation blocks that scroll out of the GPU window are parked in system RAM like documents, and for every new question the server scores them and pulls only the most relevant ~32K tokens back into VRAM (recent turns stay pinned). The model always attends to a bounded working set, so decode speed stays steady and VRAM stays capped — the cost simply moves to ~13 GB of ordinary RAM. What makes it work is that old KV blocks are usually still useful to *some* future question, but rarely all of them at once; retrieval lets the card serve the few that matter instead of holding everything.
+
+| Item | Result |
+| --- | --- |
+| 256K workspace | 261,699 / 262,144 tokens processed in one request, needle recalled |
+| Prefill | 675 tok/s @ 142K · 1,399 tok/s @ 261K (single-shot) |
+| Decode | 56.8 tok/s @ 261K single-shot; 38.8-65.8 tok/s over agent turns (median 50.3) |
+| Real agent E2E (DeliverableBench ocr-dual-channel) | **100.0/100, 8.0 min, 69 tests full green, 0 steers** |
+| vs. Adaptive KV 192K | 12.7 min -> 8.0 min; agent-turn decode 21.0 -> median 50.3 tok/s (MTP on: 83.8% acceptance) |
+| Resources | 15,620 MiB peak VRAM; 13.8 GB server RSS at 261K |
+| Build | CUDA 13.2.86 (overlaid onto the 13.2.0-devel image), `120a-real`, `GGML_CUDA_FA_ALL_QUANTS=ON` |
+
+Full config, complete server command line, build pitfalls (nvcc 13.2.51 must be upgraded), model prep (MTP head requantized to Q4_0) and long-context tables: **[references/kvmem-256k-experiment.md](references/kvmem-256k-experiment.md)**.
+
+</details>
+
+<details>
+<summary><b>2026-09-11 · Adaptive KV Streaming @ 192K</b> — prefill ~350 tok/s · decode 21.0 tok/s agent (8.2-22.4 sweep) · 196,608 context on 16GB · agent E2E 99.5/100</summary>
+
+Replicated the community "Adaptive KV Streaming" scheme ([Reddit](https://www.reddit.com/r/LocalLLM/comments/1was9n0/), [fork repo](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)): the fork streams the KV cache between VRAM and system RAM, so **196,608-token context loads and generates correctly on a 16GB card** (Q8_0 K + Q4_0 V, `--kv-stream-stage-mib 1408`, no MTP). Prefill ~350 tok/s in the corrected multi-arch build (~700 in the broken sm_120-only build); 109-209 tok/s incremental during the E2E.
 
 | Item | Result |
 | --- | --- |
@@ -27,7 +49,10 @@ Replicated the community "Adaptive KV Streaming" scheme ([Reddit](https://www.re
 
 Full config, build pitfalls (a silently-broken `sm_120`-only build, the PEG parser 500 patch, `libcuda.so.1` link fix), sweep table, and E2E numbers: **[references/adaptive-kv-192k-experiment.md](references/adaptive-kv-192k-experiment.md)**.
 
-### 2026-09-02 · FFN offload experiment
+</details>
+
+<details>
+<summary><b>2026-09-02 · FFN offload experiment</b> — prefill 565-657 tok/s · decode 18.4-19.4 tok/s · 80K context · best variant FFN4, 14m04s</summary>
 
 `--n-cpu-ffn N` keeps the dense FFN weights of the first `N` layers in system RAM and runs those layers on the CPU, reducing GPU memory pressure. Repeated the same Pi session / repo / design doc / implementation task at an 80K server context (A = earlier no-offload run for reference).
 
@@ -39,9 +64,14 @@ Full config, build pitfalls (a silently-broken `sm_120`-only build, the PEG pars
 
 Within these real runs, FFN4 was the best balance: better prefill/decode than the no-offload baseline without FFN8's decode drop and test-loop instability. More CPU offload is not automatically better. Prompted by Reddit user **Square_Turn935** ([discussion](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/)).
 
-### Original baseline
+</details>
+
+<details>
+<summary><b>Original baseline</b> — prefill 22-326 tok/s · decode 11.1-13.0 tok/s · 80K context · 14m20s</summary>
 
 First complete reference run (no FFN offload): in one medium-sized Go repository task, the agent read a design document, implemented a custom prompt feature, added five tests, and passed scoped build, vet, formatting, and diff checks in **about 14m20s**. Seven files changed; two failures were confirmed pre-existing; a billable E2E was intentionally not run. The 14 server requests measured 22.18-326.36 tok/s prefill, 11.06-12.95 tok/s decode; MTP acceptance was 84.9%-100%. Details in [benchmark.md](references/benchmark.md).
+
+</details>
 
 ## Reproducible hardware profile
 
@@ -84,11 +114,12 @@ Claude Code must use the adapter root without `/v1` and keep its token in a priv
 
 ## Limits
 
-80K is the current tested default for this 16GB GPU profile; larger contexts compete for VRAM with weights, KV cache, CUDA workspace, and other processes. 96K/128K are experiments, not defaults. For >100K contexts, the Adaptive KV fork (see timeline) is the only tested route that loads on 16GB; expect decode below ~15 tok/s beyond 100K on this card.
+80K is the current tested default for this 16GB GPU profile; larger contexts compete for VRAM with weights, KV cache, CUDA workspace, and other processes. 96K/128K are experiments, not defaults. For >100K contexts there are two tested routes on 16GB: the Adaptive KV fork (196,608 context; decode falls to 8-15 tok/s beyond ~150K) and KVMem (up to 256K; 38-57 tok/s decode in our tests) — see the timeline.
 
 ## Open-source building blocks
 
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) for CUDA inference, MTP, Flash Attention, and OpenAI-compatible serving.
+- [KVMem fork](https://github.com/kvmem/kvmem-llama.cpp) for a 256K workspace on 16GB via host-RAM KV storage + retrieval.
 - [Adaptive KV streaming fork](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming) for >100K contexts on 16GB VRAM.
 - [Qwen3.8 GGUF family](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF) for the quantized model files.
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), [OpenAI Codex](https://github.com/openai/codex), and [Pi / oh-my-pi](https://github.com/can1357/oh-my-pi) for coding-agent clients.
@@ -106,9 +137,31 @@ Licensed under Apache-2.0.
 
 ## 实验时间线（最新在前）
 
-### 2026-09-11 · Adaptive KV Streaming 192K（最新）
+<details open>
+<summary><b>2026-09-17 · KVMem 256K（最新）</b> — prefill 675-1,399 tok/s · decode 56.8 tok/s @ 261K（agent 回合中位 50.3）· 16GB 跑满 256K 工作区 · agent E2E 100/100</summary>
 
-复现社区方案（[Reddit](https://www.reddit.com/r/LocalLLM/comments/1was9n0/)、[fork 仓库](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)）：fork 把 KV cache 在显存与内存之间流式搬运，**16GB 单卡可加载并正常生成 196,608 context**（Q8_0 K + Q4_0 V，`--kv-stream-stage-mib 1408`，无 MTP）。
+复现 [KVMem 方案](https://github.com/ggml-org/llama.cpp/discussions/28894)（[仓库](https://github.com/kvmem/kvmem-llama.cpp) v0.16.0-rc1）：已完成的 KV 历史放在内存，每次提问只把 32K 窗口检索回显存——**16GB 单卡跑满 262,144 token 工作区**，开头位置的关键信息可正确召回。
+
+> **通俗理解：** KVMem 可以看成"KV cache 版的 RAG"。正常情况下，256K 的对话要求整个 KV cache 常驻显存，所以这个模型在 16GB 卡上大约 80K 就到顶了。KVMem 换个思路：聊完的历史不再占显存，而是像文档一样存进内存；每次你提新问题，服务端会给这些历史块打分，只把和当前问题最相关的约 32K token 检索回显存（最近几轮固定留在显存里）。模型每次只读一个固定大小的工作集，所以 decode 速度稳定、显存占用封顶，代价只是多占约 13 GB 内存。原理上说得通：旧 KV 块对*某些*后续问题仍然有用，但很少同时全部有用——用检索挑出真正相关的那部分，就能让小显存干大上下文的活。
+
+| 项目 | 结果 |
+| --- | --- |
+| 256K 工作区 | 单请求处理 261,699 / 262,144 token，关键信息正确召回 |
+| Prefill | 142K 单发 675 tok/s · 261K 单发 1,399 tok/s |
+| Decode | 261K 单发 56.8 tok/s；agent 回合 38.8-65.8 tok/s（中位 50.3） |
+| 真实 agent E2E（DeliverableBench ocr-dual-channel） | **100.0/100 分，8.0 分钟，69 tests 全绿，0 纠偏** |
+| 对比 Adaptive KV 192K | 12.7 分钟 → 8.0 分钟；agent 回合 decode 21.0 → 中位 50.3 tok/s（MTP 接受率 83.8%） |
+| 资源占用 | 峰值显存 15,620 MiB；261K 时服务端内存 13.8 GB |
+| 构建 | CUDA 13.2.86（叠加到 13.2.0-devel 镜像）、`120a-real`、`GGML_CUDA_FA_ALL_QUANTS=ON` |
+
+完整配置、完整服务端启动命令、构建坑（nvcc 13.2.51 必须升级）、模型准备（MTP 头重转 Q4_0）与长上下文数据：[references/kvmem-256k-experiment.md](references/kvmem-256k-experiment.md)。
+
+</details>
+
+<details>
+<summary><b>2026-09-11 · Adaptive KV Streaming 192K</b> — prefill ~350 tok/s · decode 21.0 tok/s（扫描 8.2-22.4）· 196,608 上下文 · agent E2E 99.5/100</summary>
+
+复现社区方案（[Reddit](https://www.reddit.com/r/LocalLLM/comments/1was9n0/)、[fork 仓库](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)）：fork 把 KV cache 在显存与内存之间流式搬运，**16GB 单卡可加载并正常生成 196,608 context**（Q8_0 K + Q4_0 V，`--kv-stream-stage-mib 1408`，无 MTP）。修正后的多架构构建 prefill 约 350 tok/s（仅 sm_120 的问题构建约 700 tok/s），E2E 期间增量 prefill 109-209 tok/s。
 
 | 项目 | 结果 |
 | --- | --- |
@@ -119,7 +172,10 @@ Licensed under Apache-2.0.
 
 完整配置、构建坑（仅 sm_120 构建静默产出乱码、PEG 解析 500 补丁、libcuda.so.1 链接修复）、扫描表和 E2E 数据：[references/adaptive-kv-192k-experiment.md](references/adaptive-kv-192k-experiment.md)。
 
-### 2026-09-02 · FFN offload 实测
+</details>
+
+<details>
+<summary><b>2026-09-02 · FFN offload 实测</b> — prefill 565-657 tok/s · decode 18.4-19.4 tok/s · 80K 上下文 · 最佳方案 FFN4 14分04秒</summary>
 
 `--n-cpu-ffn N` 把前 N 层的 dense FFN 权重放到系统内存、由 CPU 计算，给显卡减负。同一 Pi 会话/仓库/设计文档/实现任务，80K 服务端上下文（A 为历史无 offload 对照）：
 
@@ -131,9 +187,14 @@ Licensed under Apache-2.0.
 
 FFN4 是最佳平衡；offload 更多并不更快。由 Reddit 网友 **Square_Turn935** 的建议启发（[原讨论](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/)）。
 
-### 原始基准线
+</details>
+
+<details>
+<summary><b>原始基准线</b> — prefill 22-326 tok/s · decode 11.1-13.0 tok/s · 80K 上下文 · 14分20秒</summary>
 
 首次完整参考运行（无 FFN offload）：中型 Go 仓库任务中，agent 阅读设计文档、实现自定义 prompt 功能、新增 5 个测试，通过限定范围 build/vet/格式化/diff 检查，**约 14 分 20 秒**，修改 7 个文件；2 个失败为已有基线问题，计费 E2E 未运行。14 次请求 prefill 22.18-326.36 tok/s，decode 11.06-12.95 tok/s，MTP 接受率 84.9%-100%。详见 [benchmark.md](references/benchmark.md)。
+
+</details>
 
 ## 可复现设备配置
 
@@ -165,11 +226,12 @@ bash start-qwen38-27b-5060ti.sh
 
 ## 使用边界
 
-80K 是当前 16GB 配置实测过的默认值；更大上下文与权重/KV/工作区争抢显存，96K/128K 需单独压测。超过 100K 的唯一实测路线是 Adaptive KV fork（见时间线），该卡上 100K 之后 decode 约低于 15 tok/s。
+80K 是当前 16GB 配置实测过的默认值；更大上下文与权重/KV/工作区争抢显存，96K/128K 需单独压测。超过 100K 目前有两条实测路线：Adaptive KV fork（196,608 上下文，~150K 之后 decode 降至 8-15 tok/s）与 KVMem（最高 256K，实测 decode 38-57 tok/s），见时间线。
 
 ## 开源基础
 
 - [llama.cpp](https://github.com/ggml-org/llama.cpp)：推理与服务。
+- [KVMem fork](https://github.com/kvmem/kvmem-llama.cpp)：KV 历史放内存 + 窗口检索，16GB 显存跑 256K 工作区。
 - [Adaptive KV streaming fork](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)：16GB 显存跑 >100K 上下文。
 - [Qwen3.8 GGUF 模型页](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF)：量化模型。
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[OpenAI Codex](https://github.com/openai/codex)、[Pi / oh-my-pi](https://github.com/can1357/oh-my-pi)：coding agent 客户端。
