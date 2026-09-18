@@ -1,10 +1,5 @@
-<div align="center">
-  <a href="#english">English</a> | <a href="#中文">中文</a>
-</div>
-
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-<a id="english"></a>
 
 # Qwen3.8 Local Coding on a 16GB GPU
 
@@ -15,7 +10,28 @@ The useful question is not "how many tok/s?" but whether an agent can inspect a 
 ## Experiment timeline (newest first)
 
 <details open>
-<summary><b>2026-09-17 · KVMem 256K (latest)</b> — prefill 675-1,399 tok/s · decode 56.8 tok/s @ 261K, 38.8-65.8 over agent turns · 256K workspace on 16GB · agent E2E 100/100</summary>
+<summary><b>2026-09-18 · llama-tierkv + MTP-5 (latest)</b> — prefill 680-850 tok/s · decode 63.7 tok/s @8K (no-spec 25.7), 62.1 in the agent E2E · 256K context on 16GB · agent E2E 100/100 in 398 s</summary>
+
+Forked upstream [llama.cpp](https://github.com/ggml-org/llama.cpp) master (`c77ae69`): **TierKV** is an independent branch for running end-to-end agent tasks on consumer GPUs — a three-tier KV store (VRAM desk / RAM bookshelf / SSD archive) plus page-sparse attention selection. Source: **<https://github.com/arczhi/llama-tierkv>** (local: `~/coding/llama-tierkv/src`).
+
+The model is the **same weights as the KVMem run** — `Qwen3.8-27B-UD-IQ4_XS-mtp-q4_0.gguf` (Unsloth Qwen3.8-27B IQ4_XS with the MTP head requantized to Q4_0). The server was started with `--alias qwen38-next`, so the OpenAI API model id (and the `llama_next/qwen38-next` entry in the pi provider config) shows `qwen38-next`; that is only an API alias, not a different model.
+
+| Item | Result |
+| --- | --- |
+| Spec sweep (8K, temp 0) | no-spec 25.7 → MTP-3 56.6 → **MTP-5 63.7 tok/s**; n>=6 collapses |
+| Agent E2E, full TierKV stack | **100.0/100, 398 s, 72 tests full green, 0 steers** (window 49,152, Q4_0 KV + host store, hybrid selector, MTP-5) |
+| Server-side E2E (full stack) | decode p50 **62.1 tok/s**, acceptance 73.7%, prefill p50 382 tok/s (no-pager baseline: 65.8 / 72.8% / 479) |
+| Long context (single request, no spec) | 128K: 713 tok/s prefill / 22.74 decode · 256K: 680 / **22.70 tok/s (flat from 8K to 256K)** |
+| Context ceiling / host RAM | **262,144 tokens** / ~4.6 GB (Q4_0 store, lazy) |
+| vs. KVMem (100/100, 482 s, decode p50 50.3) | same score; **faster wall and decode**; 4.5x denser context ceiling; SSD session snapshots; 256K decode is below KVMem because mainline's MTP draft cannot be windowed |
+| Traps worth knowing | `--fit` silently CPU-offloads layers (57→35 tok/s); the MTP draft graph is sized like the main context (needs b256/ub128 to fit 56K) |
+
+Full report: **[references/llama-next-mtp5-experiment.md](references/llama-next-mtp5-experiment.md)** · TierKV design: **[references/kv-paging-design.md](references/kv-paging-design.md)** · TierKV README: <https://github.com/arczhi/llama-tierkv#readme>
+
+</details>
+
+<details>
+<summary><b>2026-09-17 · KVMem 256K</b> — prefill 675-1,399 tok/s · decode 56.8 tok/s @ 261K, 38.8-65.8 over agent turns · 256K workspace on 16GB · agent E2E 100/100</summary>
 
 Replicated the [KVMem scheme](https://github.com/ggml-org/llama.cpp/discussions/28894) ([repo](https://github.com/kvmem/kvmem-llama.cpp) v0.16.0-rc1): finished history lives in host RAM and a bounded 32K GPU window is retrieved per question — **a full 262,144-token workspace runs on the 16GB card**, with correct recall of a needle at the top of the context.
 
@@ -125,117 +141,3 @@ Claude Code must use the adapter root without `/v1` and keep its token in a priv
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), [OpenAI Codex](https://github.com/openai/codex), and [Pi / oh-my-pi](https://github.com/can1357/oh-my-pi) for coding-agent clients.
 
 Licensed under Apache-2.0.
-
-<a id="中文"></a>
-
-<details>
-<summary>中文</summary>
-
-# 在 16GB 显卡上运行 Qwen3.8 本地 Coding Agent
-
-可复用部署包：用 llama.cpp、MTP 和量化 KV cache 在 16GB 显卡、32GB 内存设备上运行量化 Qwen3.8 27B，支持 Codex、Pi 等 OpenAI 兼容客户端，并提供 Claude Code 的 Anthropic 协议适配层。真正重要的不是 tok/s，而是 agent 能否读懂真实仓库、遵循设计文档、完成修改并通过测试。参考设备：RTX 5060 Ti 16GB + 32GB RAM。
-
-## 实验时间线（最新在前）
-
-<details open>
-<summary><b>2026-09-17 · KVMem 256K（最新）</b> — prefill 675-1,399 tok/s · decode 56.8 tok/s @ 261K（agent 回合中位 50.3）· 16GB 跑满 256K 工作区 · agent E2E 100/100</summary>
-
-复现 [KVMem 方案](https://github.com/ggml-org/llama.cpp/discussions/28894)（[仓库](https://github.com/kvmem/kvmem-llama.cpp) v0.16.0-rc1）：已完成的 KV 历史放在内存，每次提问只把 32K 窗口检索回显存——**16GB 单卡跑满 262,144 token 工作区**，开头位置的关键信息可正确召回。
-
-> **通俗理解：** KVMem 可以看成"KV cache 版的 RAG"。正常情况下，256K 的对话要求整个 KV cache 常驻显存，所以这个模型在 16GB 卡上大约 80K 就到顶了。KVMem 换个思路：聊完的历史不再占显存，而是像文档一样存进内存；每次你提新问题，服务端会给这些历史块打分，只把和当前问题最相关的约 32K token 检索回显存（最近几轮固定留在显存里）。模型每次只读一个固定大小的工作集，所以 decode 速度稳定、显存占用封顶，代价只是多占约 13 GB 内存。原理上说得通：旧 KV 块对*某些*后续问题仍然有用，但很少同时全部有用——用检索挑出真正相关的那部分，就能让小显存干大上下文的活。
-
-| 项目 | 结果 |
-| --- | --- |
-| 256K 工作区 | 单请求处理 261,699 / 262,144 token，关键信息正确召回 |
-| Prefill | 142K 单发 675 tok/s · 261K 单发 1,399 tok/s |
-| Decode | 261K 单发 56.8 tok/s；agent 回合 38.8-65.8 tok/s（中位 50.3） |
-| 真实 agent E2E（DeliverableBench ocr-dual-channel） | **100.0/100 分，8.0 分钟，69 tests 全绿，0 纠偏** |
-| 对比 Adaptive KV 192K | 12.7 分钟 → 8.0 分钟；agent 回合 decode 21.0 → 中位 50.3 tok/s（MTP 接受率 83.8%） |
-| 资源占用 | 峰值显存 15,620 MiB；261K 时服务端内存 13.8 GB |
-| 构建 | CUDA 13.2.86（叠加到 13.2.0-devel 镜像）、`120a-real`、`GGML_CUDA_FA_ALL_QUANTS=ON` |
-
-完整配置、完整服务端启动命令、构建坑（nvcc 13.2.51 必须升级）、模型准备（MTP 头重转 Q4_0）与长上下文数据：[references/kvmem-256k-experiment.md](references/kvmem-256k-experiment.md)。
-
-</details>
-
-<details>
-<summary><b>2026-09-11 · Adaptive KV Streaming 192K</b> — prefill ~350 tok/s · decode 21.0 tok/s（扫描 8.2-22.4）· 196,608 上下文 · agent E2E 99.5/100</summary>
-
-复现社区方案（[Reddit](https://www.reddit.com/r/LocalLLM/comments/1was9n0/)、[fork 仓库](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)）：fork 把 KV cache 在显存与内存之间流式搬运，**16GB 单卡可加载并正常生成 196,608 context**（Q8_0 K + Q4_0 V，`--kv-stream-stage-mib 1408`，无 MTP）。修正后的多架构构建 prefill 约 350 tok/s（仅 sm_120 的问题构建约 700 tok/s），E2E 期间增量 prefill 109-209 tok/s。
-
-| 项目 | 结果 |
-| --- | --- |
-| 上下文扫描 | 8K 时 decode 22.4 tok/s → 90K 15.5 → 122K 13.4 → 180K 8.2（UD-IQ4_XS） |
-| 真实 agent E2E（DeliverableBench ocr-dual-channel） | **99.5/100 分，12.7 分钟，70 tests 全绿，0 纠偏**，decode 21.0 tok/s |
-| 与 5060 Ti 历史运行对比 | 同一张卡、同一 Pi agent：历史 14分20秒 / 14分04秒 / 25分30秒，decode 11-19 tok/s → 本次 21 tok/s，192K 配置在 agent 规模上下文下无速度退化 |
-| 实用上限 | decode 在 ~170K 跌破 10 tok/s；舒适区约 100-140K |
-
-完整配置、构建坑（仅 sm_120 构建静默产出乱码、PEG 解析 500 补丁、libcuda.so.1 链接修复）、扫描表和 E2E 数据：[references/adaptive-kv-192k-experiment.md](references/adaptive-kv-192k-experiment.md)。
-
-</details>
-
-<details>
-<summary><b>2026-09-02 · FFN offload 实测</b> — prefill 565-657 tok/s · decode 18.4-19.4 tok/s · 80K 上下文 · 最佳方案 FFN4 14分04秒</summary>
-
-`--n-cpu-ffn N` 把前 N 层的 dense FFN 权重放到系统内存、由 CPU 计算，给显卡减负。同一 Pi 会话/仓库/设计文档/实现任务，80K 服务端上下文（A 为历史无 offload 对照）：
-
-| 方案 | Agent 总耗时 | 请求数 | 加权 prefill | 加权 decode | 任务结果 |
-| --- | ---: | ---: | ---: | ---: | --- |
-| A：不加 `--n-cpu-ffn` | 约14分20秒 | 14 | 22.18-326.36 tok/s | 11.06-12.95 tok/s | 7 文件，5 新增测试通过；2 个已知历史失败 |
-| B：`--n-cpu-ffn 4` | 14分04秒 | 53 | 656.86 tok/s | 19.40 tok/s | 完成；build/vet/gofmt 和 5 个新增测试通过 |
-| C：`--n-cpu-ffn 8` | 中止前 25分30秒 | 112 | 565.51 tok/s | 18.36 tok/s | 代码基本落地，无干净最终报告 |
-
-FFN4 是最佳平衡；offload 更多并不更快。由 Reddit 网友 **Square_Turn935** 的建议启发（[原讨论](https://www.reddit.com/r/LocalLLM/comments/1w509o5/comment/p7c2sim/)）。
-
-</details>
-
-<details>
-<summary><b>原始基准线</b> — prefill 22-326 tok/s · decode 11.1-13.0 tok/s · 80K 上下文 · 14分20秒</summary>
-
-首次完整参考运行（无 FFN offload）：中型 Go 仓库任务中，agent 阅读设计文档、实现自定义 prompt 功能、新增 5 个测试，通过限定范围 build/vet/格式化/diff 检查，**约 14 分 20 秒**，修改 7 个文件；2 个失败为已有基线问题，计费 E2E 未运行。14 次请求 prefill 22.18-326.36 tok/s，decode 11.06-12.95 tok/s，MTP 接受率 84.9%-100%。详见 [benchmark.md](references/benchmark.md)。
-
-</details>
-
-## 可复现设备配置
-
-参考设备：RTX 5060 Ti 16GB + 32GB RAM（2026-09-11 Adaptive KV 实验时再次核验）。
-
-| 部件 | 实际检测配置 |
-| --- | --- |
-| CPU | AMD Ryzen 9 9950X，16 核 / 32 线程，x86_64，单路 |
-| 系统内存 | 总计 32GB，2 × 16GB DDR5，配置运行频率 6000 MT/s |
-| GPU | NVIDIA GeForce RTX 5060 Ti，显存 16311 MiB，计算能力 12.0，PCIe 总线 01:00.0 |
-| NVIDIA 软件 | 驱动 595.71.05，CUDA 13.2 |
-| GPU 功耗上限 | 180W |
-| 操作系统 | Ubuntu，Linux 内核 6.17.0-41-generic，x86_64 |
-| 系统磁盘 | 467GB NVMe SSD |
-| 推理环境 | Linux x86_64，Docker（llama.cpp CUDA server）或原生 llama-server |
-
-模型运行期间采集到的 GPU 快照约为 51% 利用率、已使用 15767 MiB 显存。利用率和剩余显存会随任务变化，这里只用于说明测试时的运行环境。
-
-## 快速开始
-
-```bash
-export MODEL_DIR=/srv/models/Qwen3.8-27B-GGUF
-export CONTEXT=81920
-export HOST_PORT=8024
-bash start-qwen38-27b-5060ti.sh
-```
-
-默认：单并发、`batch=2048`、`ubatch=512`、`q4_0` KV、CPU 上的 MTP draft、Flash Attention、关 reasoning、`--n-cpu-ffn 4`。全部可用环境变量覆盖。
-
-## 使用边界
-
-80K 是当前 16GB 配置实测过的默认值；更大上下文与权重/KV/工作区争抢显存，96K/128K 需单独压测。超过 100K 目前有两条实测路线：Adaptive KV fork（196,608 上下文，~150K 之后 decode 降至 8-15 tok/s）与 KVMem（最高 256K，实测 decode 38-57 tok/s），见时间线。
-
-## 开源基础
-
-- [llama.cpp](https://github.com/ggml-org/llama.cpp)：推理与服务。
-- [KVMem fork](https://github.com/kvmem/kvmem-llama.cpp)：KV 历史放内存 + 窗口检索，16GB 显存跑 256K 工作区。
-- [Adaptive KV streaming fork](https://github.com/RaymondHuang210129/llama.cpp-adaptive-kv-streaming)：16GB 显存跑 >100K 上下文。
-- [Qwen3.8 GGUF 模型页](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF)：量化模型。
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、[OpenAI Codex](https://github.com/openai/codex)、[Pi / oh-my-pi](https://github.com/can1357/oh-my-pi)：coding agent 客户端。
-
-协议：Apache-2.0。
-
-</details>
